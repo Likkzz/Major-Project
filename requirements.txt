@@ -4,6 +4,7 @@ numpy
 scipy
 scikit-image
 gunicorn
-rembg
+rembg[cpu]
 Pillow
+
 google-generativeai
