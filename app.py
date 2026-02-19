@@ -560,4 +560,25 @@ def recalibrate():
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port, debug=False)
+```
+
+Wait — you already have the `if __name__ == '__main__':` wrapper. The issue is likely that Render needs a **`Procfile`** to start it correctly instead of relying on `__main__`.
+
+---
+
+### Fix — create a `Procfile` in your project root:
+```
+web: gunicorn app:app --bind 0.0.0.0:$PORT
+```
+
+Then add `gunicorn` to your `requirements.txt`:
+```
+flask
+gunicorn
+opencv-python-headless
+numpy
+scipy
+scikit-image
+rembg
+Pillow
