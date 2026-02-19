@@ -1,0 +1,571 @@
+<!-- 
+    FILE: templates/index.html
+    LOCATION: workpiece_app/templates/index.html
+    PURPOSE: Frontend with Manual Specification Entry AND Grading System.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workpiece Measurement & Grading</title>
+    <style>
+        body { font-family: sans-serif; background: #1a1a1a; color: #eee; margin: 0; display: flex; flex-direction: column; height: 100vh; }
+        header { padding: 15px; background: #333; display: flex; justify-content: space-between; align-items: center; }
+        
+        .container { display: flex; flex: 1; overflow: hidden; position: relative; }
+        .sidebar { width: 340px; min-width: 340px; background: #252525; padding: 20px; overflow-y: auto; border-right: 1px solid #444; z-index: 10; }
+        .main-view { flex: 1; position: relative; background: #000; overflow: hidden; cursor: grab; width: 100%; height: 100%; }
+        .main-view:active { cursor: grabbing; }
+
+        .btn { padding: 10px 15px; border: none; cursor: pointer; font-weight: bold; border-radius: 4px; width: 100%; margin-bottom: 10px; }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-reset { background: #dc3545; color: white; }
+        .btn-save { background: #27ae60; color: white; }
+        .btn-grade { background: #f39c12; color: white; font-size: 1.1em; }
+
+        input[type="file"], input[type="text"], input[type="number"], select { margin-bottom: 15px; width: 100%; padding: 8px; box-sizing: border-box; }
+
+        .stat-box { background: #333; padding: 10px; border-radius: 4px; margin-bottom: 15px; }
+        .stat-label { font-size: 0.85em; color: #aaa; }
+        .stat-value { font-size: 1.2em; font-weight: bold; color: #fff; }
+        .auto-highlight { color: #4cd137; }
+
+        .instructions { background: #444; padding: 10px; border-radius: 4px; margin-bottom: 20px; font-size: 0.9em; line-height: 1.4; }
+        
+        /* Comparison Table */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.85em; }
+        th, td { border: 1px solid #555; padding: 5px; text-align: center; }
+        th { background: #444; color: #ccc; }
+        .err-high { color: #ff4757; font-weight: bold; }
+        .err-low { color: #2ed573; }
+
+        /* Spec Form */
+        .spec-form { display: none; background: #333; padding: 10px; border-radius: 4px; margin-bottom: 15px; }
+        .spec-form label { font-size: 0.8em; display: block; margin-bottom: 5px; }
+
+        /* Score Box */
+        .score-box { margin-top: 15px; padding: 15px; background: #2c3e50; border-radius: 8px; text-align: center; display: none; border: 2px solid #f39c12; }
+        .final-score { font-size: 2.5em; font-weight: bold; color: #f1c40f; }
+        .score-breakdown { font-size: 0.9em; color: #bdc3c7; margin-top: 5px; text-align: left; }
+
+        /* Footer */
+        footer {
+            background: #111;
+            color: #888;
+            text-align: center;
+            padding: 15px;
+            font-size: 0.85em;
+            border-top: 1px solid #333;
+        }
+
+        canvas { display: block; } 
+    </style>
+</head>
+<body>
+
+<header>
+    <h3>Workpiece Measurement Tool</h3>
+</header>
+
+<div class="container">
+    <div class="sidebar">
+        <!-- STEP 1: Measure -->
+        <h4>1. Measure Workpiece</h4>
+        <input type="file" id="imageInput" accept="image/*">
+        <button class="btn btn-primary" onclick="uploadImage()">Process Image</button>
+
+        <div id="resultsArea" style="display:none;">
+            <h4>Auto Results</h4>
+            <div class="stat-box">
+                <div class="stat-label">Total Length</div>
+                <div class="stat-value" id="autoLength">-</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Outer Diameter</div>
+                <div class="stat-value" id="autoOD">-</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Core Diameter</div>
+                <div class="stat-value" id="autoCore">-</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Auto Pitch</div>
+                <div class="stat-value auto-highlight" id="autoPitch">-</div>
+            </div>
+
+            <!-- STEP 2: Compare -->
+            <hr style="border-color:#444; margin: 20px 0;">
+            <h4>2. Compare & Grade</h4>
+            
+            <label style="font-size:0.85em; color:#aaa;">Load Model Spec:</label>
+            <select id="specSelect" onchange="loadSavedSpec()">
+                <option value="">-- Select Model --</option>
+            </select>
+            
+            <button class="btn btn-secondary" style="margin-top:5px; font-size:0.8em;" onclick="toggleSpecForm()">+ Add New Model</button>
+
+            <div id="specForm" class="spec-form">
+                <h4>Add Specification</h4>
+                <label>Model Name:</label>
+                <input type="text" id="newSpecName" placeholder="e.g. Model A">
+                <label>Length (mm):</label>
+                <input type="number" id="newLen" step="0.01">
+                <label>Outer Dia (mm):</label>
+                <input type="number" id="newOuter" step="0.01">
+                <label>Core Dia (mm):</label>
+                <input type="number" id="newCore" step="0.01">
+                <label>Pitch (mm):</label>
+                <input type="number" id="newPitch" step="0.01">
+                <button class="btn btn-save" onclick="saveManualSpec()">Save Model</button>
+            </div>
+
+            <div id="comparisonArea" style="display:none;">
+                <h4>Specification Report</h4>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Param</th>
+                            <th>Measured</th>
+                            <th>Spec</th>
+                            <th>Err(%)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="compTableBody"></tbody>
+                </table>
+                
+                <button class="btn btn-grade" style="margin-top: 15px;" onclick="calculateGrade()">Calculate Grade</button>
+                
+                <div id="scoreResult" class="score-box">
+                    <div>Final Score</div>
+                    <div class="final-score" id="finalScoreVal">0/10</div>
+                    <div class="score-breakdown" id="scoreDetails"></div>
+                </div>
+            </div>
+            
+            <!-- Manual Verification -->
+            <hr style="border-color:#444; margin: 20px 0;">
+            <h4>3. Visual Verification</h4>
+             <div class="instructions" id="instructionText">
+                <span style="color:#ff3b30">● Red</span> Peaks | <span style="color:#00d2d3">● Cyan</span> Valleys<br>
+                <span style="color:#00a8ff">--</span> Box | <span style="color:yellow">--</span> Outer | <span style="color:#e056fd">--</span> Core
+            </div>
+             <button class="btn btn-secondary" onclick="fitImage()">Fit Image</button>
+        </div>
+
+        <!-- RECALIBRATE SECTION -->
+<hr style="border-color:#444; margin: 20px 0;">
+<h4>⚙️ Recalibrate Scale</h4>
+<div class="instructions" style="background:#3a2a00; border-left: 3px solid #f39c12;">
+    Upload a <b>reference workpiece</b> with known dimensions to update the pixel-to-mm scale for your current camera zoom.
+</div>
+
+<label style="font-size:0.85em; color:#aaa;">Reference Image:</label>
+<input type="file" id="calImageInput" accept="image/*" style="margin-bottom:10px;">
+
+<label style="font-size:0.85em; color:#aaa;">Known Length (mm):</label>
+<input type="number" id="calLength" step="0.01" placeholder="e.g. 122.00" style="margin-bottom:10px;">
+
+<label style="font-size:0.85em; color:#aaa;">Known Outer Diameter (mm):</label>
+<input type="number" id="calOD" step="0.01" placeholder="e.g. 20.12" style="margin-bottom:10px;">
+
+<button class="btn" style="background:#e67e22; color:white;" onclick="runRecalibration()">
+    🔄 Run Recalibration
+</button>
+
+<div id="calResult" style="display:none; margin-top:10px; background:#1e3a1e; padding:10px; border-radius:4px; font-size:0.85em;">
+    <div style="color:#2ed573; font-weight:bold;">✅ Calibration Updated</div>
+    <div id="calDetails" style="color:#aaa; margin-top:5px;"></div>
+</div>
+<div id="calError" style="display:none; margin-top:10px; background:#3a1e1e; padding:10px; border-radius:4px; color:#ff4757; font-size:0.85em;"></div>
+    </div>
+
+    <div class="main-view" id="canvasContainer">
+        <canvas id="imgCanvas"></canvas>
+    </div>
+</div>
+
+<footer>
+    Developed by Major project team guided by Dr. Mervin Herbert, Batch of 2026.
+</footer>
+
+<script>
+    let canvas = document.getElementById('imgCanvas');
+    let ctx = canvas.getContext('2d');
+    let container = document.getElementById('canvasContainer');
+    
+    let img = new Image();
+    let autoPoints = { peaks: [], valleys: [], valleys_used: [], line_peaks: [], line_valleys: [], vis_outer_dia: [], vis_core_dia: [] };
+    let visBoundingBox = []; 
+    let detectedContour = []; 
+    
+    let measuredData = { length: 0, outer: 0, core: 0, pitch: 0, depth: 0 };
+    let currentSpecs = null; 
+    
+    let scale = 1;
+    let pX = 0;
+    let pY = 0;
+    let isDragging = false;
+    let startX, startY;
+
+    // --- INITIALIZATION ---
+    window.onload = async function() {
+        resizeCanvas();
+        await loadSpecList();
+    };
+
+    async function loadSpecList() {
+        try {
+            let resp = await fetch('/get_specs');
+            let names = await resp.json();
+            let sel = document.getElementById('specSelect');
+            sel.innerHTML = '<option value="">-- Select Model --</option>';
+            names.forEach(name => {
+                let opt = document.createElement('option');
+                opt.value = name;
+                opt.innerText = name;
+                sel.appendChild(opt);
+            });
+        } catch(e) { console.log("Could not load specs", e); }
+    }
+
+    function resizeCanvas() {
+        if (container.clientWidth > 0 && container.clientHeight > 0) {
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            draw();
+        }
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    async function runRecalibration() {
+    let fileInput = document.getElementById('calImageInput');
+    let knownLength = document.getElementById('calLength').value;
+    let knownOD = document.getElementById('calOD').value;
+
+    document.getElementById('calResult').style.display = 'none';
+    document.getElementById('calError').style.display = 'none';
+
+    if (!fileInput.files.length) return alert("Select a reference image first.");
+    if (!knownLength || !knownOD || parseFloat(knownLength) <= 0 || parseFloat(knownOD) <= 0) {
+        return alert("Enter valid known dimensions.");
+    }
+
+    let formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    formData.append('known_length', knownLength);
+    formData.append('known_od', knownOD);
+
+    try {
+        let resp = await fetch('/recalibrate', { method: 'POST', body: formData });
+        let data = await resp.json();
+
+        if (data.error) {
+            document.getElementById('calError').style.display = 'block';
+            document.getElementById('calError').innerText = '❌ ' + data.error;
+        } else {
+            document.getElementById('calResult').style.display = 'block';
+            document.getElementById('calDetails').innerHTML =
+                `Scale (Axis/Length): <b>${data.new_scale_axis}</b> mm/px<br>` +
+                `Scale (Perp/Diameter): <b>${data.new_scale_perp}</b> mm/px<br>` +
+                `<span style="color:#888">Ref length: ${data.derived_length_px}px → ${knownLength}mm | ` +
+                `Ref OD: ${data.derived_od_px}px → ${knownOD}mm</span>`;
+        }
+    } catch(e) {
+        document.getElementById('calError').style.display = 'block';
+        document.getElementById('calError').innerText = '❌ Request failed: ' + e.message;
+    }
+}
+
+    function fitImage() {
+        if (!img.src || img.width === 0) return;
+        resizeCanvas();
+        let scaleX = canvas.width / img.width;
+        let scaleY = canvas.height / img.height;
+        scale = Math.min(scaleX, scaleY) * 0.9;
+        pX = (canvas.width - img.width * scale) / 2;
+        pY = (canvas.height - img.height * scale) / 2;
+        draw();
+    }
+
+    async function uploadImage() {
+        let input = document.getElementById('imageInput');
+        if(input.files.length === 0) return alert("Select a file first");
+
+        let formData = new FormData();
+        formData.append('file', input.files[0]);
+        
+        let resp = await fetch('/upload', { method: 'POST', body: formData });
+        let data = await resp.json();
+        if(data.error) return alert(data.error);
+
+        document.getElementById('resultsArea').style.display = 'block';
+        
+        measuredData.length = data.auto_data.length_mm;
+        measuredData.outer = data.auto_data.od_mm;
+        measuredData.core = data.auto_data.core_mm;
+        
+        document.getElementById('autoLength').innerText = measuredData.length + " mm";
+        document.getElementById('autoOD').innerText = measuredData.outer + " mm";
+        document.getElementById('autoCore').innerText = measuredData.core + " mm";
+        
+        if (data.auto_data.thread_metrics && Object.keys(data.auto_data.thread_metrics).length > 0) {
+            let t = data.auto_data.thread_metrics;
+            measuredData.pitch = t.pitch_mm;
+            measuredData.depth = t.depth_mm;
+            document.getElementById('autoPitch').innerText = `${t.pitch_mm} mm (${t.pitch_tpi} TPI)`;
+        } else {
+            measuredData.pitch = 0;
+            measuredData.depth = 0;
+            document.getElementById('autoPitch').innerText = "Failed";
+        }
+
+        img.onload = function() {
+            autoPoints = { peaks: [], valleys: [], valleys_used: [], line_peaks: [], line_valleys: [], vis_outer_dia: [], vis_core_dia: [] };
+            visBoundingBox = [];
+            detectedContour = [];
+            
+            if(data.auto_data.all_points) autoPoints = data.auto_data.all_points;
+            if(data.auto_data.vis_bounding_box) visBoundingBox = data.auto_data.vis_bounding_box;
+            if(data.auto_data.contour) detectedContour = data.auto_data.contour;
+            
+            fitImage(); 
+            // Re-run comparison if spec selected
+            if(document.getElementById('specSelect').value) loadSavedSpec();
+        };
+        img.src = data.image_url;
+    }
+    
+    function toggleSpecForm() {
+        let form = document.getElementById('specForm');
+        form.style.display = (form.style.display === 'none' || form.style.display === '') ? 'block' : 'none';
+    }
+    
+    async function saveManualSpec() {
+        let name = document.getElementById('newSpecName').value;
+        let len = parseFloat(document.getElementById('newLen').value);
+        let outer = parseFloat(document.getElementById('newOuter').value);
+        let core = parseFloat(document.getElementById('newCore').value);
+        let pitch = parseFloat(document.getElementById('newPitch').value);
+
+        if(!name || isNaN(len) || isNaN(outer) || isNaN(core) || isNaN(pitch)) {
+            return alert("Please fill all fields correctly.");
+        }
+
+        let specs = {
+            length_mm: len,
+            outer_dia_mm: outer,
+            core_dia_mm: core,
+            pitch_mm: pitch
+        };
+        
+        let resp = await fetch('/save_spec', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: name, specs: specs})
+        });
+        
+        if(resp.ok) {
+            alert("Model Saved!");
+            toggleSpecForm();
+            loadSpecList(); 
+        } else {
+            alert("Save failed.");
+        }
+    }
+    
+    async function loadSavedSpec() {
+        let name = document.getElementById('specSelect').value;
+        if(!name) return;
+        
+        let resp = await fetch(`/get_spec/${name}`);
+        if(resp.ok) {
+            let specs = await resp.json();
+            currentSpecs = specs;
+            renderComparisonTable(specs);
+        }
+    }
+
+    function renderComparisonTable(specs) {
+        let tbody = document.getElementById('compTableBody');
+        tbody.innerHTML = "";
+        document.getElementById('comparisonArea').style.display = 'block';
+        document.getElementById('scoreResult').style.display = 'none'; // Hide previous score
+
+        function addRow(label, measured, spec) {
+            let mVal = parseFloat(measured) || 0;
+            let sVal = parseFloat(spec);
+            let errStr = "-";
+            let cls = "";
+            
+            if (!isNaN(sVal) && sVal > 0) {
+                let diff = Math.abs(mVal - sVal);
+                let percent = (diff / sVal) * 100;
+                
+                errStr = percent.toFixed(2) + "%";
+                if(percent < 10.0) cls = "err-low"; else cls = "err-high";
+            } 
+
+            let tr = `<tr>
+                <td>${label}</td>
+                <td>${mVal}</td>
+                <td>${sVal}</td>
+                <td class="${cls}">${errStr}</td>
+            </tr>`;
+            tbody.innerHTML += tr;
+        }
+
+        addRow("Length", measuredData.length, specs.length_mm);
+        addRow("Outer Dia", measuredData.outer, specs.outer_dia_mm);
+        addRow("Core Dia", measuredData.core, specs.core_dia_mm);
+        addRow("Pitch", measuredData.pitch, specs.pitch_mm);
+        
+        // Calculate Spec Depth (Outer - Core)/2
+        let specDepth = (specs.outer_dia_mm - specs.core_dia_mm) / 2;
+        addRow("Depth", measuredData.depth, specDepth.toFixed(2));
+    }
+    
+    function calculateGrade() {
+        // Debug log to check if function is called
+        console.log("Calculating Grade...", currentSpecs, measuredData);
+        
+        if (!currentSpecs) {
+            alert("Please load a specification model first.");
+            return;
+        }
+        
+        let score = 0;
+        let log = "";
+        
+        // Updated Grading Logic (Rubric)
+        function gradeParam(label, measured, spec, maxMarks) {
+            let m = parseFloat(measured) || 0;
+            let s = parseFloat(spec) || 0;
+            if (s === 0) return 0; // safety
+            
+            let errPercent = (Math.abs(m - s) / s) * 100;
+            let earned = 0;
+            
+            if (errPercent <= 10.0) {
+                earned = maxMarks; // <10% error = Full Marks
+            } else if (errPercent <= 20.0) {
+                earned = maxMarks * 0.75; // <20% error = 3/4 Marks
+            } else {
+                earned = maxMarks * 0.50; // >20% error = Half Marks (Minimum guaranteed if detected)
+            }
+            
+            // Round to 1 decimal for neat display
+            earned = Math.round(earned * 10) / 10;
+            
+            log += `<div><b>${label}:</b> ${earned}/${maxMarks} (Err: ${errPercent.toFixed(1)}%)</div>`;
+            return earned;
+        }
+        
+        // Length (4 marks)
+        score += gradeParam("Length", measuredData.length, currentSpecs.length_mm, 4);
+        // Outer Dia (3 marks)
+        score += gradeParam("Outer Dia", measuredData.outer, currentSpecs.outer_dia_mm, 3);
+        // Core Dia (1 mark)
+        score += gradeParam("Core Dia", measuredData.core, currentSpecs.core_dia_mm, 1);
+        // Pitch (1 mark)
+        score += gradeParam("Pitch", measuredData.pitch, currentSpecs.pitch_mm, 1);
+        
+        // Depth (1 mark)
+        let specDepth = (currentSpecs.outer_dia_mm - currentSpecs.core_dia_mm) / 2;
+        score += gradeParam("Depth", measuredData.depth, specDepth, 1);
+        
+        document.getElementById('scoreResult').style.display = 'block';
+        document.getElementById('finalScoreVal').innerText = score.toFixed(1) + "/10";
+        document.getElementById('scoreDetails').innerHTML = log;
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.save();
+        ctx.translate(pX, pY);
+        ctx.scale(scale, scale);
+
+        if(img.src) ctx.drawImage(img, 0, 0);
+
+        let markerSize = 6 / scale;
+        
+        if(detectedContour.length > 0) {
+            ctx.beginPath();
+            ctx.moveTo(detectedContour[0][0], detectedContour[0][1]);
+            for(let i=1; i<detectedContour.length; i++) ctx.lineTo(detectedContour[i][0], detectedContour[i][1]);
+            ctx.closePath();
+            ctx.lineWidth = 2 / scale;
+            ctx.strokeStyle = '#4cd137'; 
+            ctx.stroke();
+        }
+
+        if(autoPoints.peaks) {
+            ctx.fillStyle = '#ff3b30'; 
+            autoPoints.peaks.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, markerSize, 0, 2 * Math.PI); ctx.fill(); });
+        }
+
+        if(autoPoints.valleys) {
+            let usedSet = new Set();
+            if(autoPoints.valleys_used) autoPoints.valleys_used.forEach(p => usedSet.add(p.x + "," + p.y));
+            
+            autoPoints.valleys.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, markerSize, 0, 2 * Math.PI);
+                ctx.fillStyle = (p.is_used) ? '#00d2d3' : '#7f8c8d';
+                ctx.fill();
+            });
+        }
+
+        if(autoPoints.line_peaks && autoPoints.line_peaks.length === 2) drawLine(autoPoints.line_peaks, 'yellow', 2 / scale, [5/scale, 5/scale]);
+        if(autoPoints.line_valleys && autoPoints.line_valleys.length === 2) drawLine(autoPoints.line_valleys, 'yellow', 2 / scale, [5/scale, 5/scale]);
+
+        if (visBoundingBox.length === 4) {
+            ctx.beginPath();
+            ctx.moveTo(visBoundingBox[0][0], visBoundingBox[0][1]);
+            for (let i = 1; i < 4; i++) ctx.lineTo(visBoundingBox[i][0], visBoundingBox[i][1]);
+            ctx.closePath();
+            ctx.lineWidth = 2 / scale;
+            ctx.setLineDash([15 / scale, 15 / scale]); 
+            ctx.strokeStyle = '#00a8ff'; 
+            ctx.stroke();
+            ctx.setLineDash([]); 
+        }
+        
+        if (autoPoints.vis_outer_dia && autoPoints.vis_outer_dia.length === 2) {
+            drawLine(autoPoints.vis_outer_dia, 'yellow', 3 / scale, []);
+        }
+        if (autoPoints.vis_core_dia && autoPoints.vis_core_dia.length === 2) {
+            drawLine(autoPoints.vis_core_dia, '#e056fd', 3 / scale, []);
+        }
+        ctx.restore();
+    }
+
+    function drawLine(points, color, width, dash = []) {
+        ctx.beginPath();
+        ctx.moveTo(points[0][0], points[0][1]);
+        ctx.lineTo(points[1][0], points[1][1]);
+        ctx.lineWidth = width;
+        ctx.strokeStyle = color;
+        ctx.setLineDash(dash);
+        ctx.stroke();
+        ctx.setLineDash([]); 
+    }
+
+    container.addEventListener('mousedown', (e) => { isDragging = true; startX = e.clientX - pX; startY = e.clientY - pY; });
+    window.addEventListener('mousemove', (e) => { if(isDragging) { pX = e.clientX - startX; pY = e.clientY - startY; draw(); } });
+    window.addEventListener('mouseup', () => { isDragging = false; });
+    container.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        let zoom = Math.exp((e.deltaY < 0 ? 1 : -1) * 0.1);
+        let rect = canvas.getBoundingClientRect();
+        let mouseX = e.clientX - rect.left;
+        let mouseY = e.clientY - rect.top;
+        pX = mouseX - (mouseX - pX) * zoom;
+        pY = mouseY - (mouseY - pY) * zoom;
+        scale *= zoom;
+        draw();
+    });
+</script>
+</body>
+</html>
